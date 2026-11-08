@@ -29,7 +29,7 @@ jobs:
         run: |
           set -o pipefail
           node -v; npm -v
-          KEEP_E2E_WORK=1 bash -x playbooks/05-supply-firewall/test/test_fw.sh 2>&1 | tee suite.log
+          KEEP_E2E_WORK=1 bash playbooks/05-supply-firewall/test/test_fw.sh 2>&1 | tee suite.log
       - name: 收集证据
         if: always()
         run: |

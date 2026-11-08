@@ -188,9 +188,11 @@ check "F5 构建产物照常生成(拦的是网,不是流程)" test -x "$WORK/ca
 
 echo "== 8. 场景G:uv 源码包 setup.py(pypi 构建后端)外联"
 # 构建后端 setuptools 预取走代理 = CI 镜像预装工具链(防火墙外);防火墙内 --offline 用缓存
+# 预取代理失败(无代理环境的托管 runner)回退直连,语义不变:工具链都在防火墙外预装
 if uv venv "$WORK/venv" --quiet >/dev/null 2>&1 \
-   && https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890 \
-      uv pip install --python "$WORK/venv/bin/python" setuptools --quiet >/dev/null 2>&1; then
+   && { https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890 \
+        uv pip install --python "$WORK/venv/bin/python" setuptools --quiet >/dev/null 2>&1 \
+        || uv pip install --python "$WORK/venv/bin/python" setuptools --quiet >/dev/null 2>&1; }; then
   fw --mode enforce --allow "$ROOT/allowlists/pypi.txt" --evidence "$WORK/ev-g.jsonl" -- \
     uv pip install --offline --python "$WORK/venv/bin/python" "$ROOT/demo/pypi-evil" \
     > "$WORK/g.out" 2>&1
