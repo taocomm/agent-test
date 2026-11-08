@@ -1,0 +1,8 @@
+{
+  "name": "totally-benign",
+  "version": "1.0.0",
+  "description": "postinstall 只连本机采集器,演示白名单放行路径",
+  "scripts": {
+    "postinstall": "node fetch.js"
+  }
+}

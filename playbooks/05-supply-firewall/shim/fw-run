@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# fw-run — 把一次包管理器调用罩进安装期防火墙(LD_PRELOAD 模式)
+# 用法: fw-run [--mode enforce|audit] [--allow FILE] [--evidence FILE] [--chain] -- CMD [ARGS...]
+#   --mode enforce  白名单外出网直接阻断并记证据(默认)
+#   --mode audit    只记不拦,用于上线前白名单调参
+#   --allow FILE    白名单文件(缺省时不放行任何出网)
+#   --evidence FILE 证据 JSONL(缺省 playbooks/05-supply-firewall/runs/fw-<时间戳>.jsonl)
+#   --chain         运行后证据套 07 号 SHA-256 哈希链 + 封存点(07 号接生产流,
+#                   2026-11-08);FW_CHAIN_KEY=<hexfile> 时 seal 带 HMAC 签名
+# 环境变量透传:FW_DOH=deny(可先 export)已知公共 DoH/DoT 解析器强制拒(白名单内也拒)
+# 测试可用 FW_SHIM 覆盖 .so 路径,避免产物落进源码树。
+set -Eeuo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+mode=enforce
+allow=""
+evidence=""
+chain=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --mode) mode="$2"; shift 2 ;;
+    --allow) allow="$2"; shift 2 ;;
+    --evidence) evidence="$2"; shift 2 ;;
+    --chain) chain=1; shift ;;
+    --) shift; break ;;
+    *) echo "fw-run: 未知参数 $1" >&2; exit 2 ;;
+  esac
+done
+[[ $# -gt 0 ]] || { echo "usage: fw-run [--mode enforce|audit] [--allow FILE] [--evidence FILE] -- CMD..." >&2; exit 2; }
+
+SHIM="${FW_SHIM:-$HERE/fwshim.so}"
+if [[ ! -f "$SHIM" ]]; then
+  echo "fw-run: $SHIM 不存在,先编译:" >&2
+  echo "  gcc -O2 -Wall -Wextra -shared -fPIC -o $SHIM $HERE/fwshim.c -ldl -lpthread" >&2
+  exit 2
+fi
+
+ts=$(date +%Y%m%d-%H%M%S)
+evidence="${evidence:-$HERE/../runs/fw-$ts.jsonl}"
+
+# 白名单/证据路径必须绝对化:install 期子进程会换 cwd(npm 在包目录跑脚本,
+# cargo 在包目录跑 build.rs),相对路径在那里打不开 → fail-closed 误拦良性构建。
+# 缺省值先落、再绝对化:空字符串先 absolute 化会在 set -e 下静默 rc=1(VM 实测)。
+[[ -z "$allow" || "$allow" = /* ]] || allow="$(readlink -f "$allow")"
+[[ "$evidence" = /* ]] || evidence="$(readlink -f "$evidence")"
+mkdir -p "$(dirname "$evidence")"
+
+export FW_SCOPE=1 FW_MODE="$mode" FW_ALLOW="$allow" FW_EVIDENCE="$evidence"
+export LD_PRELOAD="$SHIM${LD_PRELOAD:+:$LD_PRELOAD}"
+
+if [[ "$chain" == 1 ]]; then
+  # --chain(07 号接生产流):运行后证据 JSONL 套 SHA-256 哈希链 + 封存点。
+  # seal 建议复制 outbox(同目录 seal 只防误改,不防蓄意改);FW_CHAIN_KEY=<hexfile>
+  # 时 seal 带 HMAC 签名。空证据(无出网事件)也入链(seq 0),封存语义不变。
+  CHLOG="$HERE/../../07-evidence-chain/chainlog"
+  if [[ ! -d "$CHLOG" ]]; then
+    echo "fw-run: --chain 找不到 07 号 chainlog($CHLOG)" >&2
+    exit 2
+  fi
+  rc=0; "$@" || rc=$?
+  [[ -f "$evidence" ]] || : > "$evidence"
+  python3 "$CHLOG/chain_tee.py" < "$evidence" > "$evidence.chained.jsonl"
+  python3 "$CHLOG/verify.py" "$evidence.chained.jsonl" --seal \
+    ${FW_CHAIN_KEY:+"--seal-key" "$FW_CHAIN_KEY"}
+  echo "[fw-run] 证据链: $evidence.chained.jsonl"
+  exit $rc
+fi
+exec "$@"

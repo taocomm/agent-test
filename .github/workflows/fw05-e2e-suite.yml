@@ -1,0 +1,43 @@
+# 05 号安装期防火墙全套件 E2E(preload 模式,场景 A-J)托管 runner 真机复跑。
+# 本地基线 56/56(Debian 13 / 6.12.95 沙箱);真机已验证项见 ci/gh-smoke-standalone.yml 头注。
+# 托管 runner 差异点(2026-11-08 实测后回填):
+#   - Ubuntu 24.04 的 GnuTLS 经 t64 改名,编译期 -l:libgnutls.so.30 需 symlink 兜底
+#     (shim 的 dlsym(RTLD_NEXT) 走符号不走 soname,运行时不受影响);
+#   - npm 版本较旧(<11)时 install-scripts 默认放行,preflight 会真跑一次 demo 脚本
+#     (demo 全部只碰本机端点,无害);
+#   - 场景 G 的 setuptools 预取在 runner 直连 pypi(沙箱走 7890 代理)。
+name: fw05-e2e-suite
+on: [push, workflow_dispatch]
+
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: GnuTLS soname 兼容(t64 改名 → 编译期文件名)
+        run: |
+          ls /usr/lib/x86_64-linux-gnu/libgnutls.so.30 >/dev/null 2>&1 || \
+            sudo ln -s /usr/lib/x86_64-linux-gnu/libgnutls.so.30t64 \
+                       /usr/lib/x86_64-linux-gnu/libgnutls.so.30
+          ls -l /usr/lib/x86_64-linux-gnu/libgnutls.so.30*
+      - name: 确保 uv 在场(场景 G)
+        run: command -v uv >/dev/null || pipx install uv
+      - name: 全套件 E2E(preload A-J)
+        run: |
+          set -o pipefail
+          KEEP_E2E_WORK=1 bash playbooks/05-supply-firewall/test/test_fw.sh 2>&1 | tee suite.log
+      - name: 收集证据
+        if: always()
+        run: |
+          mkdir -p evidence
+          d=$(sed -n 's/^E2E_WORK=//p' suite.log | tail -1)
+          [ -n "$d" ] && cp "$d"/ev-*.jsonl evidence/ 2>/dev/null || true
+          ls -la evidence/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fw05-suite-evidence
+          path: |
+            suite.log
+            evidence/
+          if-no-files-found: ignore

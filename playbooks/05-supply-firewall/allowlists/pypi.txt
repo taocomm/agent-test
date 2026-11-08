@@ -1,0 +1,3 @@
+# pip/uv 生态默认出网白名单(含 sdist 构建期;镜像按项目追加)
+pypi.org
+files.pythonhosted.org

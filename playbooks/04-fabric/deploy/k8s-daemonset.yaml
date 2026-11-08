@@ -1,0 +1,35 @@
+# DaemonSet 骨架:每节点一个 node 容器,hostPath 读采集器输出 [未实测]
+# session 注入走 downward API(见 design.md 通道3)
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: agent-fabric-node
+spec:
+  selector:
+    matchLabels: { app: agent-fabric-node }
+  template:
+    metadata:
+      labels: { app: agent-fabric-node }
+    spec:
+      containers:
+        - name: node
+          image: agent-fabric-hub:0.1   # 占位,自行构建推送
+          command: ["python3", "node/node.py"]
+          args:
+            - --hub
+            - http://agent-fabric-hub.monitoring:8765
+            - --host
+            - $(NODE_NAME)
+            - --file
+            - /runs/events.jsonl
+            - --follow
+          env:
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+            - name: AGENT_SESSION_ID
+              valueFrom: { fieldRef: { fieldPath: metadata.labels['agent-session'] } }
+          volumeMounts:
+            - { name: runs, mountPath: /runs, readOnly: true }
+      volumes:
+        - name: runs
+          hostPath: { path: /var/lib/agent-fabric/runs, type: DirectoryOrCreate }

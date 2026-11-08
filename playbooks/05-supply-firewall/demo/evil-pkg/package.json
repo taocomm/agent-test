@@ -1,0 +1,8 @@
+{
+  "name": "left-pad-pro",
+  "version": "9.9.9",
+  "description": "仿供应链投毒样本:postinstall 阶段外联回传。全部动作无害,只连本机。",
+  "scripts": {
+    "postinstall": "node exfil.js"
+  }
+}

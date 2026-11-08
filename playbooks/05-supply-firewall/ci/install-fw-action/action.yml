@@ -1,0 +1,50 @@
+name: 'install-fw'
+description: >-
+  安装期出网防火墙(LD_PRELOAD 模式):罩住一次包管理器调用树,白名单外 connect/resolve
+  阻断 + 证据 JSONL。无特权,自托管 runner 与托管 runner 均可用。
+inputs:
+  mode:
+    description: 'enforce(默认,拦截)或 audit(只记不拦,上线前白名单调参)'
+    required: false
+    default: enforce
+  allowlist:
+    description: '白名单文件路径(相对仓库根或绝对路径;留空 = 不放行任何出网)'
+    required: false
+    default: ''
+  evidence:
+    description: '证据 JSONL 输出路径(相对仓库根)'
+    required: false
+    default: 'install-fw-evidence.jsonl'
+  command:
+    description: '要罩住的命令,如 npm ci / cargo build --offline / uv pip install -r requirements.txt'
+    required: true
+runs:
+  using: composite
+  steps:
+    # 编译 shim + 把白名单/证据转成绝对路径(install 期子进程会换 cwd,相对路径会打不开)
+    - id: prepare
+      shell: bash
+      run: |
+        set -Eeuo pipefail
+        ROOT="${GITHUB_ACTION_PATH}/../.."
+        gcc -O2 -Wall -Wextra -shared -fPIC -o "$ROOT/shim/fwshim.so" \
+            "$ROOT/shim/fwshim.c" -ldl -lpthread
+        ALLOW="${{ inputs.allowlist }}"
+        [[ -z "$ALLOW" || "$ALLOW" = /* ]] || ALLOW="$GITHUB_WORKSPACE/$ALLOW"
+        EV="${{ inputs.evidence }}"
+        [[ "$EV" = /* ]] || EV="$GITHUB_WORKSPACE/$EV"
+        {
+          echo "FW_ROOT=$ROOT"
+          echo "FW_ALLOW=$ALLOW"
+          echo "FW_EVIDENCE=$EV"
+        } >> "$GITHUB_ENV"
+    - id: guarded-install
+      shell: bash
+      env:
+        FW_SCOPE: '1'
+        FW_MODE: ${{ inputs.mode }}
+        FW_ALLOW: ${{ env.FW_ALLOW }}
+        FW_EVIDENCE: ${{ env.FW_EVIDENCE }}
+      run: |
+        LD_PRELOAD="${FW_ROOT}/shim/fwshim.so${LD_PRELOAD:+:$LD_PRELOAD}" \
+          bash -ec '${{ inputs.command }}'

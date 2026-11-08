@@ -1,0 +1,4 @@
+# cargo 生态默认出网白名单(含 build.rs 运行期;镜像按项目追加)
+index.crates.io
+static.crates.io
+crates.io

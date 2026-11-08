@@ -1,0 +1,65 @@
+# 05 号 BPF LSM SNI 域门在 GitHub 托管 runner 的可行性探针(41 轮遗留:"需特权容器"待验)。
+# 判据:/sys/kernel/security/lsm 含 bpf = LSM 钩子可加载;lsm= 是内核启动参数,
+# 托管 runner 无法修改 —— 不含 bpf 时以 notice 记录实测事实,维持「root + 自托管/VM」结论。
+# 可行时真跑场景组 L(test_sni_lsm.sh:sudo + bcc + curl/node/npm/python/gnutls 九例)。
+name: fw05-bpf-lsm-sni
+on: [push, workflow_dispatch]
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: 内核事实
+        run: |
+          uname -a
+          echo "lsm = $(cat /sys/kernel/security/lsm)"
+          grep -E 'CONFIG_BPF_LSM|CONFIG_DEBUG_INFO_BTF|CONFIG_LSM=' /boot/config-$(uname -r) || echo "(无 /boot config)"
+          test -e /sys/fs/btf/vmlinux && echo "BTF vmlinux present" || echo "BTF vmlinux absent"
+          echo "unprivileged_bpf_disabled = $(cat /proc/sys/kernel/unprivileged_bpf_disabled 2>/dev/null || echo '?')"
+      - name: 可行性判定
+        id: feas
+        run: |
+          if grep -qw bpf /sys/kernel/security/lsm; then
+            echo "feasible=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "feasible=no" >> "$GITHUB_OUTPUT"
+            echo "::notice::BPF LSM 未激活(lsm=$(cat /sys/kernel/security/lsm));lsm= 是启动参数,托管 runner 改不了 → LSM 形态维持『root + 自托管/VM』"
+          fi
+      - name: 装 BCC + 内核头
+        if: steps.feas.outputs.feasible == 'yes'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-bpfcc "linux-headers-$(uname -r)"
+      - name: GnuTLS soname 兼容(t64 改名)
+        if: steps.feas.outputs.feasible == 'yes'
+        run: |
+          ls /usr/lib/x86_64-linux-gnu/libgnutls.so.30 >/dev/null 2>&1 || \
+            sudo ln -s /usr/lib/x86_64-linux-gnu/libgnutls.so.30t64 \
+                       /usr/lib/x86_64-linux-gnu/libgnutls.so.30
+      - name: 跑场景组 L(LSM SNI 域门,root)
+        if: steps.feas.outputs.feasible == 'yes'
+        run: |
+          set -o pipefail
+          sudo env KEEP_E2E_WORK=1 \
+            bash playbooks/05-supply-firewall/bpf-lsm/test_sni_lsm.sh 2>&1 | tee lsm.log
+      - name: 收集证据
+        if: always() && steps.feas.outputs.feasible == 'yes'
+        run: |
+          mkdir -p evidence
+          d=$(sed -n 's/^E2E_WORK=//p' lsm.log | tail -1)
+          [ -n "$d" ] && sudo cp "$d"/ev-*.jsonl evidence/ 2>/dev/null || true
+          [ -n "$d" ] && sudo chown -R "$(id -u):$(id -g)" evidence || true
+          ls -la evidence/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fw05-lsm-${{ matrix.os }}
+          path: |
+            lsm.log
+            evidence/
+          if-no-files-found: ignore

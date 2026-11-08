@@ -1,0 +1,23 @@
+{
+  "$comment": "agent 行为事件 canonical schema —— 03-run-ledger 与 04-fabric 共用。v0:字段全部可选除 ts/type/host/session。",
+  "type": "object",
+  "required": ["ts", "type", "host", "session"],
+  "properties": {
+    "ts":      { "type": "string", "description": "ISO8601,采集时刻" },
+    "type":    { "type": "string", "enum": ["exec", "file", "read", "net", "dns", "llm", "raw"] },
+    "host":    { "type": "string" },
+    "session": { "type": "string", "description": "AGENT_SESSION_ID 或 '?'" },
+    "pid":     { "type": "integer" },
+    "ppid":    { "type": "integer", "description": "exec 事件带,谱系用" },
+    "comm":    { "type": "string" },
+    "argv":    { "type": "string", "description": "exec:命令行拼接" },
+    "path":    { "type": "string", "description": "file:目标路径;to 字段配 rename" },
+    "to":      { "type": "string" },
+    "flags":   { "type": "string", "description": "file:open flags" },
+    "src":     { "type": "string", "description": "net:本机地址:port" },
+    "dst":     { "type": "string", "description": "net:对端地址:port" },
+    "host_hdr":{ "type": "string", "description": "llm:HTTP Host" },
+    "model":   { "type": "string", "description": "llm:请求 model 字段" },
+    "head":    { "type": "string", "description": "llm:明文头片段(脱敏后)" }
+  }
+}

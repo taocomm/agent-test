@@ -1,0 +1,20 @@
+# compose 骨架:hub + 一个挂载 runs/ 的 node [未实测]
+services:
+  hub:
+    build: .
+    image: agent-fabric-hub:0.1
+    command: ["python3", "hub/hub.py", "--port", "8765", "--db", "/data/fabric.db"]
+    ports: ["127.0.0.1:8765:8765"]
+    volumes: ["fabric-data:/data"]
+  node:
+    image: agent-fabric-hub:0.1
+    command: >
+      python3 node/node.py --hub http://hub:8765
+      --host ${HOSTNAME} --file /runs/events.jsonl --follow
+    environment:
+      - AGENT_SESSION_ID=${AGENT_SESSION_ID:-?}
+    volumes:
+      # 采集器(03-run-ledger / Tetragon 导出)写到这里
+      - ./runs:/runs:ro
+volumes:
+  fabric-data:

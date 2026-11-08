@@ -1,0 +1,6 @@
+pyproject.toml
+setup.py
+pypi_evil.egg-info/PKG-INFO
+pypi_evil.egg-info/SOURCES.txt
+pypi_evil.egg-info/dependency_links.txt
+pypi_evil.egg-info/top_level.txt

@@ -1,0 +1,2 @@
+# npm 生态默认出网白名单(按行一个;镜像源/私有 registry 按项目追加)
+registry.npmjs.org

@@ -1,0 +1,37 @@
+# 独立测试仓形态的冒烟 workflow(2026-11-07 真机实测通过,run 42369109907@taocomm/agent-test):
+#   deny-connect 红(设计内:空白名单 fail-closed,curl exit 7,证据 connect deny 行 comm=curl)
+#   allow-domain 绿(resolve allow example.com → connect allow,52ms)
+# 布局约束:action 在仓库根下两级(ci/install-fw-action/),shim/fwshim.c 在仓库根
+# —— action.yml 用 GITHUB_ACTION_PATH/../.. 定位 shim,换布局要同步改 ROOT。
+# (playbooks 同仓形态见 github-actions-example.yml,两者 ROOT 解析不同)
+name: install-fw-smoke
+on: [push, workflow_dispatch]
+
+jobs:
+  deny-connect:
+    runs-on: ubuntu-latest        # 自托管机换 [self-hosted, linux]
+    steps:
+      - uses: actions/checkout@v4
+      - run: printf '' > deny-all.txt      # 空白名单 = 全拒(fail-closed)
+      - uses: ./ci/install-fw-action
+        with:
+          mode: enforce
+          allowlist: deny-all.txt
+          command: curl -sS -m5 http://93.184.216.34/ -o /dev/null
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: ev-deny, path: install-fw-evidence.jsonl }
+
+  allow-domain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: printf 'example.com\n' > allow.txt
+      - uses: ./ci/install-fw-action
+        with:
+          mode: enforce
+          allowlist: allow.txt
+          command: curl -sSI -m5 https://example.com -o /dev/null
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: ev-allow, path: install-fw-evidence.jsonl }

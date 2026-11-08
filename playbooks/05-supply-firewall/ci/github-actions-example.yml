@@ -1,0 +1,27 @@
+# 守卫安装(GH Actions / 自托管 runner 通用形态):
+#   白名单外出网 → 该 step 红 + 证据 artifact 落盘(事后取证)。
+# 首跑调参:把 mode 换成 audit 跑一周,从证据里捞真实需要的域名补进 allowlist,再切 enforce。
+# cargo / uv 生态把 command 与 allowlist 换掉即可(allowlists/cargo.txt、allowlists/pypi.txt)。
+name: guarded-install
+on: [push, workflow_dispatch]
+
+jobs:
+  install:
+    runs-on: [self-hosted, linux]   # 主战场:自托管 runner;ubuntu-latest 同样可用
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: npm ci(安装期防火墙罩住)
+        uses: ./playbooks/05-supply-firewall/ci/install-fw-action
+        with:
+          mode: enforce
+          allowlist: playbooks/05-supply-firewall/allowlists/npm.txt
+          evidence: install-fw-evidence.jsonl
+          command: npm ci
+
+      - name: 上传证据(无论成败)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-fw-evidence
+          path: install-fw-evidence.jsonl
