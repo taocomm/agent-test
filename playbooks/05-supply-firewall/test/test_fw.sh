@@ -54,7 +54,9 @@ npm_pack() { npm pack "$1" --pack-destination "$WORK" 2>/dev/null | tail -1; }
 # 真正带脚本的安装由各场景自己经 fw-run 执行。
 npm_preflight_approve() { # <场景目录> <tarball> <pkg名>
   ( cd "$1" && npm install "${npm_flags[@]}" "$2" >/dev/null 2>&1 || true
-    npm install-scripts approve "$3" >/dev/null 2>&1
+    # npm <11.4 无 install-scripts 子命令(默认放行脚本,无需准入)→ 护栏防 set -e 中断;
+    # 准入制 npm 上真实失败会在场景断言上以 FAIL 呈现
+    npm install-scripts approve "$3" >/dev/null 2>&1 || true
     rm -rf node_modules package-lock.json )
 }
 

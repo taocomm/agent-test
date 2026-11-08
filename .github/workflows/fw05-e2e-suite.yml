@@ -14,6 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24        # 套件按 npm 11 install-scripts 准入制语义编写(沙箱 24.20/npm 11.19)
       - name: GnuTLS soname 兼容(t64 改名 → 编译期文件名)
         run: |
           ls /usr/lib/x86_64-linux-gnu/libgnutls.so.30 >/dev/null 2>&1 || \
